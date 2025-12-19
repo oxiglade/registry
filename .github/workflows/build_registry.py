@@ -68,6 +68,81 @@ def extract_npm_package_name(package_spec: str) -> str:
         return package_spec.split("@")[0]
 
 
+def extract_npm_package_version(package_spec: str) -> str | None:
+    """Extract version from npm package spec like @scope/name@version."""
+    # Handle scoped packages: @scope/name@version -> version
+    if package_spec.startswith("@"):
+        at_positions = [i for i, c in enumerate(package_spec) if c == "@"]
+        if len(at_positions) > 1:
+            return package_spec[at_positions[1] + 1:]
+        return None
+    else:
+        # Unscoped: name@version -> version
+        parts = package_spec.split("@")
+        return parts[1] if len(parts) > 1 else None
+
+
+def normalize_version(version: str) -> str:
+    """Normalize version to semver format (x.y.z)."""
+    parts = version.split(".")
+    while len(parts) < 3:
+        parts.append("0")
+    return ".".join(parts[:3])
+
+
+def extract_version_from_url(url: str) -> str | None:
+    """Extract version from binary archive URL."""
+    # GitHub releases: /download/v1.0.0/ or /releases/v1.0.0/
+    github_match = re.search(r'/(?:download|releases)/v?([\d.]+)/', url)
+    if github_match:
+        return normalize_version(github_match.group(1))
+    # npm tarballs: /-/package-1.0.0.tgz
+    npm_match = re.search(r'/-/[^/]+-(\d+\.\d+\.\d+)\.tgz', url)
+    if npm_match:
+        return npm_match.group(1)
+    return None
+
+
+def validate_distribution_versions(agent_version: str, distribution: dict) -> list[str]:
+    """Validate that distribution versions match agent version and don't use 'latest'."""
+    errors = []
+
+    # Check binary URLs for /latest/ and version mismatches
+    if "binary" in distribution:
+        for platform, target in distribution["binary"].items():
+            url = target.get("archive", "")
+            if "/latest/" in url:
+                errors.append(f"Binary URL for {platform} uses '/latest/' - use explicit version instead")
+            else:
+                url_version = extract_version_from_url(url)
+                if url_version and url_version != agent_version:
+                    errors.append(f"Binary URL for {platform} has version {url_version}, expected {agent_version}")
+
+    # Check npm packages
+    if "npx" in distribution:
+        package = distribution["npx"].get("package", "")
+        if "@latest" in package.lower():
+            errors.append(f"npx package uses '@latest' - use explicit version instead: {package}")
+        else:
+            pkg_version = extract_npm_package_version(package)
+            if pkg_version and pkg_version != agent_version:
+                errors.append(f"npx package version ({pkg_version}) doesn't match agent version ({agent_version})")
+
+    # Check PyPI packages
+    if "uvx" in distribution:
+        package = distribution["uvx"].get("package", "")
+        if "@latest" in package.lower():
+            errors.append(f"uvx package uses '@latest' - use explicit version instead: {package}")
+        # Extract version from uvx package (formats: package==version, package>=version, package@version)
+        version_match = re.search(r'[=@]+([\d.]+)', package)
+        if version_match:
+            pkg_version = version_match.group(1)
+            if pkg_version != agent_version:
+                errors.append(f"uvx package version ({pkg_version}) doesn't match agent version ({agent_version})")
+
+    return errors
+
+
 def validate_distribution_urls(distribution: dict) -> list[str]:
     """Validate that distribution URLs exist."""
     if SKIP_URL_VALIDATION:
@@ -292,6 +367,16 @@ def build_registry():
                 print(f"  - {error}")
             has_errors = True
             continue
+
+        # Validate distribution versions match agent version
+        if "distribution" in agent:
+            version_errors = validate_distribution_versions(agent["version"], agent["distribution"])
+            if version_errors:
+                print(f"Error: {agent_dir.name} version validation failed:")
+                for error in version_errors:
+                    print(f"  - {error}")
+                has_errors = True
+                continue
 
         # Check for duplicate IDs
         agent_id = agent["id"]

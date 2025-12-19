@@ -1,7 +1,7 @@
 {
   "id": "auggie",
   "name": "Auggie CLI",
-  "version": "0.2.0",
+  "version": "0.9.1",
   "description": "Augment Code's powerful software agent, backed by industry-leading context engine",
   "repository": "https://github.com/augmentcode/auggie-zed-extension",
   "authors": ["Augment Code <support@augmentcode.com>"],
