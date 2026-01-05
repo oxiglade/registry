@@ -43,6 +43,23 @@ This is a registry of ACP (Agent Client Protocol) agents. The structure is:
 
 Set `SKIP_URL_VALIDATION=1` to bypass URL checks during local development.
 
+## Updating Agent Versions
+
+To update agents to their latest versions:
+
+1. **For npm packages** (`npx` distribution): Check latest version at `https://registry.npmjs.org/<package>/latest`
+2. **For GitHub binaries** (`binary` distribution): Check latest release at `https://api.github.com/repos/<owner>/<repo>/releases/latest`
+
+Update `agent.json`:
+- Update the `version` field
+- Update version in all distribution URLs (use replace-all for consistency)
+- For npm: update `package` field (e.g., `@google/gemini-cli@0.22.5`)
+- For binaries: update archive URLs with new version/tag
+
+Run build to validate: `uv run --with jsonschema .github/workflows/build_registry.py`
+
+**Note:** Agents in `_not_yet_unsupported/` should remain there - do not move them to the main registry. They can still have their versions updated in place.
+
 ## Distribution Types
 
 - `binary`: Platform-specific archives (`darwin-aarch64`, `linux-x86_64`, etc.)
